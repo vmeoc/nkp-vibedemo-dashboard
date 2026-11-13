@@ -202,9 +202,28 @@ def cmd_diag(args) -> int:
                 print("FAILED at step '%s': %s" % (failed[0]["label"], failed[0]["detail"]))
                 return 1
             if time.time() > deadline:
-                print("Still not finished after %ds." % args.timeout)
+                print("STILL RUNNING (not failed): run `vibe diag --wait` again to keep following.")
                 return 2
         time.sleep(args.interval)
+
+
+# ------------------------------------------------------------------- images
+def cmd_images(args) -> int:
+    from . import images as images_mod
+    cfg = _cfg()
+    out_dir = cfg.app_repo_dir / "app" / "images"
+    try:
+        items = images_mod.download(args.query, args.count, out_dir)
+    except images_mod.ImageError as exc:
+        print("NO IMAGES: %s" % exc)
+        print("Continue without images (use CSS gradients/emoji) rather than retrying many times.")
+        return 5
+    print("Downloaded %d image(s) into app/images/ - use these paths in index.html:" % len(items))
+    for item in items:
+        print('  <img src="images/%s" alt="%s">' % (item["file"].name, item["title"].rsplit(".", 1)[0]))
+    print("Add this credits line in the page footer (required by the licences):")
+    print("  " + images_mod.credits_html(items))
+    return 0
 
 
 # ------------------------------------------------------------------- render
@@ -283,8 +302,14 @@ def main(argv=None) -> int:
     group.add_argument("--watch", action="store_true")
     group.add_argument("--wait", action="store_true")
     p.add_argument("--interval", type=float, default=3.0)
-    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--timeout", type=int, default=110,
+                   help="--wait gives back control after this many seconds (agent tool timeouts)")
     p.set_defaults(func=cmd_diag)
+
+    p = sub.add_parser("images")
+    p.add_argument("query")
+    p.add_argument("--count", type=int, default=3)
+    p.set_defaults(func=cmd_images)
 
     p = sub.add_parser("render")
     p.add_argument("--contract", required=True)

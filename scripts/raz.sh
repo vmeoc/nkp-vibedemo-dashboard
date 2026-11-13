@@ -18,7 +18,7 @@ set -euo pipefail
 
 YES=0
 [ "${1:-}" = "-y" ] && YES=1
-RAZ_WAIT="${RAZ_WAIT:-180}"
+RAZ_WAIT="${RAZ_WAIT:-90}"   # stays under agent tool timeouts
 
 if [ "$MODE" = "simulated" ]; then
   "$PY" -m vibedemo.cli status idle >/dev/null

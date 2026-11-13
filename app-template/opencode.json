@@ -1,15 +1,20 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["AGENTS.md", "CONTRACT.md"],
+  "instructions": [
+    "AGENTS.md",
+    "CONTRACT.md"
+  ],
   "permission": {
     "edit": "allow",
     "webfetch": "deny",
     "bash": {
       "*": "deny",
       "vibe status *": "allow",
+      "vibe images *": "allow",
       "vibe validate*": "allow",
       "vibe push *": "ask",
       "vibe diag*": "allow",
+      "vibe raz*": "allow",
       "ls*": "allow",
       "cat *": "allow"
     }

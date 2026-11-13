@@ -5,6 +5,7 @@
 #   vibe status coding|show|idle   tell the dashboard the AI is coding
 #   vibe validate [file]           check the contract against the platform rules
 #   vibe push "<message>"          validate, commit, push, record the SHA
+#   vibe images "<subject>" [--count N]  download free images into app/images/
 #   vibe diag [--wait|--watch|--json]  pipeline status (same as the dashboard)
 #   vibe raz [-y]                  reset the demo to "Demo on hold"
 #   vibe dashboard                 start the Pipeline Monitor
@@ -20,13 +21,13 @@ done
 SCRIPTS="$(cd -P "$(dirname "$src")" && pwd)"
 
 usage() {
-  sed -n '2,10p' "$SCRIPTS/vibe" | sed 's/^# \{0,1\}//'
+  sed -n '2,11p' "$SCRIPTS/vibe" | sed 's/^# \{0,1\}//'
 }
 
 cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
-  status|validate|push|diag|raz|dashboard) exec "$SCRIPTS/$cmd.sh" "$@" ;;
+  status|validate|push|diag|raz|dashboard|images) exec "$SCRIPTS/$cmd.sh" "$@" ;;
   help|-h|--help) usage ;;
   *) echo "vibe: unknown command '$cmd'" >&2; usage >&2; exit 64 ;;
 esac

@@ -106,6 +106,7 @@ run `setup/05-refresh-baseline.sh`: it updates vibe-demo-app and moves the
 
 ```
 vibe status coding|show|idle     tell the dashboard the AI is coding
+vibe images "<subject>" [--count N]  free photos from Wikimedia Commons into app/images/
 vibe validate [file]             check the contract against the platform rules
 vibe push "<message>"            validate, commit, push, record the SHA
 vibe diag [--wait|--watch|--json] pipeline status (same as the dashboard)
@@ -144,7 +145,14 @@ a countdown, and deploy it."* The agent marks itself as coding, writes `app/`,
 asks you the contract questions in plain words, shows the summary, waits for your
 "yes", pushes and follows the deployment until it gives you the URL.
 
-After the demo: `vibe raz -y`.
+To reset between two demos, just tell the agent "reset the demo": it runs
+`vibe raz -y` (allowed in opencode.json, and only on explicit request per
+AGENTS.md). You only interact with Opencode; keep `vibe dashboard` running on
+the second screen.
+
+Photos: the agent runs `vibe images "<subject>"` once; files land in
+`app/images/` and are baked into the container image (the deployed page does
+not need Internet). A credits line is added in the footer.
 
 ## Troubleshooting
 
