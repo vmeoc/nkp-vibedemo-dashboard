@@ -5,7 +5,7 @@
 # (vibe-demo-x7k2p). Creating the Project as YAML with spec.namespaceName
 # gives a stable name, so scripts and dashboard never need updating.
 #
-# Run against the MANAGEMENT cluster (MGMT_KUBECONFIG in .env).
+# Run against the MANAGEMENT cluster (MGMT_KUBECONFIG in .env, or your current kubectl context).
 # Settings used (.env): MGMT_KUBECONFIG, WORKSPACE_NAME, TARGET_CLUSTER,
 #                       PROJECT_NAME, NAMESPACE, KUBECONFIG (workload, to verify)
 set -euo pipefail
@@ -14,9 +14,15 @@ set -euo pipefail
 PROJECT_NAME="${PROJECT_NAME:-vibe-demo}"
 WORKSPACE_NAME="${WORKSPACE_NAME:-default-workspace}"
 TARGET_CLUSTER="${TARGET_CLUSTER:-}"
-[ -n "${MGMT_KUBECONFIG:-}" ] || die "set MGMT_KUBECONFIG in .env (kubeconfig of the NKP management cluster)"
+# MGMT_KUBECONFIG empty = use the current kubectl config/context (e.g. already exported KUBECONFIG)
+MGMT_KUBECONFIG="${MGMT_KUBECONFIG:-}"
 MGMT_KUBECONFIG="${MGMT_KUBECONFIG/#\~/$HOME}"
-mk() { kubectl --kubeconfig "$MGMT_KUBECONFIG" "$@"; }
+mk() {
+  if [ -n "$MGMT_KUBECONFIG" ]; then kubectl --kubeconfig "$MGMT_KUBECONFIG" "$@"; else kubectl "$@"; fi
+}
+if [ -z "$MGMT_KUBECONFIG" ]; then
+  log "MGMT_KUBECONFIG not set: using the current kubectl context ($(kubectl config current-context 2>/dev/null || echo '?'))"
+fi
 
 log "Checking the management cluster"
 mk get crd projects.workspaces.kommander.mesosphere.io >/dev/null 2>&1 \
@@ -65,7 +71,7 @@ EOF
 log "Validating the Project with a server-side dry run"
 if ! printf '%s\n' "$MANIFEST" | mk apply --dry-run=server -f - ; then
   warn "The API server refused the manifest above. To see the fields of your NKP version:"
-  warn "  kubectl --kubeconfig \$MGMT_KUBECONFIG explain projects.spec --api-version=workspaces.kommander.mesosphere.io/v1alpha1 --recursive"
+  warn "  kubectl explain projects.spec --api-version=workspaces.kommander.mesosphere.io/v1alpha1 --recursive"
   die "Project not created"
 fi
 
