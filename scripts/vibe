@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# vibe - the platform CLI. Installed once on the laptop (setup/04-install-cli.sh),
+# usable from any folder, e.g. from the vibe-demo-app repo by the AI agent.
+#
+#   vibe status coding|show|idle   tell the dashboard the AI is coding
+#   vibe validate [file]           check the contract against the platform rules
+#   vibe push "<message>"          validate, commit, push, record the SHA
+#   vibe diag [--wait|--watch|--json]  pipeline status (same as the dashboard)
+#   vibe raz [-y]                  reset the demo to "Demo on hold"
+#   vibe dashboard                 start the Pipeline Monitor
+set -euo pipefail
+
+# Resolve the real location of this script, even through a symlink (macOS has no readlink -f).
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+SCRIPTS="$(cd -P "$(dirname "$src")" && pwd)"
+
+usage() {
+  sed -n '2,10p' "$SCRIPTS/vibe" | sed 's/^# \{0,1\}//'
+}
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  status|validate|push|diag|raz|dashboard) exec "$SCRIPTS/$cmd.sh" "$@" ;;
+  help|-h|--help) usage ;;
+  *) echo "vibe: unknown command '$cmd'" >&2; usage >&2; exit 64 ;;
+esac

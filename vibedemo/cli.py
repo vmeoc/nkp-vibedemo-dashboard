@@ -113,7 +113,7 @@ def cmd_push(args) -> int:
         sha = hashlib.sha1(("%s%s" % (time.time(), args.message)).encode()).hexdigest()
         state_mod.mark_pushed(cfg.state_file, sha, args.message)
         print("SIMULATED push (MODE=simulated): nothing sent to GitHub.")
-        print("SHA %s recorded. Follow the deployment with: scripts/diag.sh --wait" % sha)
+        print("SHA %s recorded. Follow the deployment with: vibe diag --wait" % sha)
         return 0
 
     _require_live(cfg)
@@ -131,7 +131,7 @@ def cmd_push(args) -> int:
     _git(repo, "push", "origin", "HEAD:main", extra=auth)
     state_mod.mark_pushed(cfg.state_file, sha, args.message)
     print("Pushed commit %s to %s (main)." % (sha, cfg.repo_full_name))
-    print("Follow the deployment with: scripts/diag.sh --wait")
+    print("Follow the deployment with: vibe diag --wait")
     return 0
 
 
@@ -192,7 +192,7 @@ def cmd_diag(args) -> int:
         if args.wait:
             statuses = [s["status"] for s in report["steps"]]
             if report["run"]["phase"] != "pushed":
-                print("No push recorded yet: run scripts/push.sh first.")
+                print("No push recorded yet: run vibe push first.")
                 return 2
             if statuses[-1] == SUCCESS:
                 print("DEPLOYED: %s" % report["app_url"])

@@ -37,7 +37,7 @@ vibedemo/            Python package (stdlib only, 3.9+)
   steps.py           the 6 steps, recomputed on every call (live + simulated)
   cli.py             entry point used by all scripts and by CI
 dashboard/           Pipeline Monitor (server.py + static/index.html)
-scripts/             status.sh validate.sh push.sh diag.sh raz.sh dashboard.sh
+scripts/             vibe (the platform CLI) + status/validate/push/diag/raz/dashboard.sh
 setup/               00..04 one-time setup + smoke test
 docs/                step-by-step guide
 app-template/        initial content of vibe-demo-app (baseline "Demo on hold")
@@ -94,7 +94,28 @@ with a LoadBalancer (MetalLB); a GitHub account.
 9. **NKP UI > Project vibe-demo > Continuous Deployment > Add GitOps Source**:
    ID `vibe-demo-app`, URL of the app repo, branch `main`, path `./deploy`.
 10. `setup/03-check-gitops-source.sh` - checks Flux objects and the on-hold page.
-11. Set `MODE=live` in `.env`.
+11. `setup/04-install-cli.sh` - installs the `vibe` command (symlink in `~/.local/bin`).
+    The AI only uses `vibe status|validate|push|diag`.
+12. Set `MODE=live` in `.env`.
+
+Whenever `app-template/AGENTS.md`, `CONTRACT.md` or `opencode.json` change,
+run `setup/05-refresh-baseline.sh`: it updates vibe-demo-app and moves the
+`baseline` tag (otherwise the next RAZ would restore the old files).
+
+## The `vibe` CLI
+
+```
+vibe status coding|show|idle     tell the dashboard the AI is coding
+vibe validate [file]             check the contract against the platform rules
+vibe push "<message>"            validate, commit, push, record the SHA
+vibe diag [--wait|--watch|--json] pipeline status (same as the dashboard)
+vibe raz [-y]                    reset the demo to "Demo on hold"
+vibe dashboard                   start the Pipeline Monitor
+```
+
+Why a CLI and not scripts in the app repo: the AI cannot modify the platform
+tools, the GitHub token stays in the platform `.env`, and the dashboard, `diag`
+and the AI share exactly the same code.
 12. `setup/04-smoke-test.sh` - the full chain without the AI (fixed test page),
     then `scripts/raz.sh -y`.
 
@@ -102,19 +123,19 @@ with a LoadBalancer (MetalLB); a GitHub account.
 
 ```bash
 # MODE=simulated in .env
-scripts/dashboard.sh                    # open http://127.0.0.1:8090
-scripts/status.sh coding                # AI starts
-scripts/push.sh "Hello page"            # fake SHA, no GitHub call
-scripts/diag.sh --wait                  # ~1 minute to "App is ready"
-scripts/raz.sh -y                       # back to pending
+vibe dashboard                          # open http://127.0.0.1:8090
+vibe status coding                      # AI starts
+vibe push "Hello page"                  # fake SHA, no GitHub call
+vibe diag --wait                        # ~1 minute to "App is ready"
+vibe raz -y                             # back to pending
 SIMULATE_FAIL=deployment scripts/dashboard.sh   # rehearse a red step
 ```
 
 ## Running the demo
 
 ```bash
-scripts/raz.sh -y                       # start clean: "Demo on hold"
-scripts/dashboard.sh                    # second screen
+vibe raz -y                             # start clean: "Demo on hold"
+vibe dashboard                          # second screen
 cd ../vibe-demo-app && opencode         # the agent follows AGENTS.md
 ```
 
@@ -123,7 +144,7 @@ a countdown, and deploy it."* The agent marks itself as coding, writes `app/`,
 asks you the contract questions in plain words, shows the summary, waits for your
 "yes", pushes and follows the deployment until it gives you the URL.
 
-After the demo: `scripts/raz.sh -y`.
+After the demo: `vibe raz -y`.
 
 ## Troubleshooting
 

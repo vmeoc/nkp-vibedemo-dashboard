@@ -26,8 +26,7 @@ fi
 
 log "Creating $APP_REPO_DIR from app-template/"
 "$PY" -m vibedemo.cli template --src "$ROOT/app-template" --dst "$APP_REPO_DIR" \
-  --set "PLATFORM_REPO=$PLATFORM_REPO" --set "NAMESPACE=$NAMESPACE" \
-  --set "PLATFORM_DIR_NAME=$(basename "$ROOT")"
+  --set "PLATFORM_REPO=$PLATFORM_REPO" --set "NAMESPACE=$NAMESPACE"
 
 log "Rendering the baseline deploy/ (image $IMAGE:onhold)"
 "$PY" -m vibedemo.cli render --contract "$APP_REPO_DIR/contract.yaml" \
@@ -65,4 +64,5 @@ Manual steps left (once):
        Git Ref Type    : Branch -> main
        Path            : ./deploy
   3. Check it: setup/03-check-gitops-source.sh
+  4. Install the platform CLI used by the AI: setup/04-install-cli.sh
 EOF

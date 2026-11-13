@@ -188,7 +188,7 @@ async function poll() {
     render(data);
   } catch (err) {
     const banner = document.getElementById("banner");
-    banner.textContent = "Dashboard backend error: " + err.message + " - run scripts/diag.sh for details.";
+    banner.textContent = "Dashboard backend error: " + err.message + " - run vibe diag for details.";
     banner.style.display = "block";
   } finally {
     setTimeout(poll, 2000);

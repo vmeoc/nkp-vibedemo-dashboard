@@ -6,10 +6,10 @@
     "webfetch": "deny",
     "bash": {
       "*": "deny",
-      "../__PLATFORM_DIR_NAME__/scripts/status.sh *": "allow",
-      "../__PLATFORM_DIR_NAME__/scripts/validate.sh*": "allow",
-      "../__PLATFORM_DIR_NAME__/scripts/push.sh *": "ask",
-      "../__PLATFORM_DIR_NAME__/scripts/diag.sh*": "allow",
+      "vibe status *": "allow",
+      "vibe validate*": "allow",
+      "vibe push *": "ask",
+      "vibe diag*": "allow",
       "ls*": "allow",
       "cat *": "allow"
     }
