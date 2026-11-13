@@ -80,7 +80,9 @@ with a LoadBalancer (MetalLB); a GitHub account.
    the app repo calls its reusable workflow.
 2. **Create an empty public repo** `<you>/vibe-demo-app` (no README).
 3. **Create the token**: fine-grained, *only* `vibe-demo-app`, Contents R/W,
-   Actions R/W (details in `.env.example`).
+   Actions R/W, Workflows R/W (details in `.env.example`). Workflows is only
+   needed by setup step 7 (it pushes `.github/workflows/`): remove it afterwards
+   so the AI cannot change the pipeline.
 4. `cp .env.example .env` and fill it. Keep `MODE=simulated` for now.
 5. `setup/00-check-prereqs.sh`
 6. `setup/01-create-project.sh` - creates the NKP Project with the fixed namespace
