@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Monitor · Vibecoding on NKP</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #161d2c; --panel2: #1c2538; --line: #2a3550;
+    --text: #e8ecf4; --muted: #8b97b0; --accent: #7b5cff;
+    --pending: #4a5570; --running: #3b82f6; --success: #22c55e; --failed: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+           padding: 18px 32px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+  .chip b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chip.sim { border-color: #a16207; color: #fbbf24; }
+  main { padding: 28px 32px 40px; max-width: 1400px; margin: 0 auto; }
+  .flow { display: grid; grid-template-columns: 200px 48px 1fr; gap: 0; align-items: stretch; }
+  .ai { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+  .ai .badge { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center;
+               font-weight: 700; font-size: 22px; background: var(--panel2); border: 3px solid var(--pending); }
+  .ai small { color: var(--muted); font-size: 12px; }
+  .arrows { display: flex; flex-direction: column; justify-content: space-around; align-items: center; color: var(--line); font-size: 26px; }
+  .groups { display: flex; flex-direction: column; gap: 18px; }
+  .group { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 16px; }
+  .group h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { background: var(--panel2); border: 1px solid var(--line); border-left: 5px solid var(--pending);
+          border-radius: 12px; padding: 14px 16px; min-height: 118px; display: flex; flex-direction: column; gap: 8px;
+          transition: border-color .3s, box-shadow .3s; }
+  .card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card .title { font-weight: 650; font-size: 16px; }
+  .pill { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; padding: 3px 9px; border-radius: 999px;
+          background: var(--pending); color: #fff; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .detail { color: var(--muted); font-size: 13px; line-height: 1.4; word-break: break-word; }
+  .card a, .ai a { color: #a5b4fc; font-size: 13px; text-decoration: none; }
+  .card a:hover { text-decoration: underline; }
+  .s-running { border-left-color: var(--running); box-shadow: 0 0 0 1px rgba(59,130,246,.25), 0 0 24px rgba(59,130,246,.12); }
+  .s-running .pill { background: var(--running); }
+  .s-success { border-left-color: var(--success); }
+  .s-success .pill { background: var(--success); color: #062b14; }
+  .s-failed { border-left-color: var(--failed); box-shadow: 0 0 0 1px rgba(239,68,68,.35); }
+  .s-failed .pill { background: var(--failed); }
+  .s-failed .detail { color: #fca5a5; }
+  .ai.s-running .badge { border-color: var(--running); animation: pulse 1.6s infinite; }
+  .ai.s-success .badge { border-color: var(--success); }
+  .ai.s-failed .badge { border-color: var(--failed); }
+  .spin { width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+          border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,.5); } 50% { box-shadow: 0 0 0 10px rgba(59,130,246,0); } }
+  .result { margin-top: 26px; border-radius: 16px; padding: 22px 26px; display: none; align-items: center;
+            justify-content: space-between; gap: 16px; font-size: 18px; }
+  .result.ok { display: flex; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.5); }
+  .result.ko { display: flex; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.5); }
+  .result a { color: #86efac; font-weight: 700; font-size: 22px; }
+  .banner { display: none; margin-bottom: 18px; padding: 10px 14px; border-radius: 10px; background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.5); color: #fca5a5; font-size: 14px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding-bottom: 20px; }
+  @media (max-width: 900px) {
+    .flow { grid-template-columns: 1fr; } .arrows { display: none; } .ai { margin-bottom: 18px; }
+    .cards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pipeline Monitor <span>· vibecoded app → Nutanix Kubernetes Platform</span></h1>
+  <div class="meta">
+    <span class="chip" id="mode">mode: -</span>
+    <span class="chip">run <b id="run">-</b></span>
+    <span class="chip">commit <b id="sha">-</b></span>
+    <span class="chip">elapsed <b id="elapsed">-</b></span>
+  </div>
+</header>
+<main>
+  <div class="banner" id="banner"></div>
+  <div class="flow">
+    <div class="ai" id="ai">
+      <div class="badge">AI</div>
+      <div class="title"><b>Opencode</b><br><small>LLM served by Nutanix Enterprise AI</small></div>
+      <span class="pill"></span>
+      <small class="detail"></small>
+    </div>
+    <div class="arrows"><div>➜</div><div>➜</div></div>
+    <div class="groups">
+      <section class="group">
+        <h2>Development &amp; GitHub</h2>
+        <div class="cards" id="group-github"></div>
+      </section>
+      <section class="group">
+        <h2>Nutanix Kubernetes Platform</h2>
+        <div class="cards" id="group-nkp"></div>
+      </section>
+    </div>
+  </div>
+  <div class="result" id="result"></div>
+</main>
+<footer id="footer">Live status recomputed from GitHub, Kubernetes and HTTP every 2 seconds.</footer>
+
+<script>
+const PILL = { pending: "Pending", running: "In progress", success: "Success", failed: "Failed" };
+let lastElapsedBase = null;  // {elapsed, at, finished}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmt(sec) {
+  if (sec == null) return "-";
+  sec = Math.max(0, Math.floor(sec));
+  return sec >= 60 ? Math.floor(sec / 60) + "m" + String(sec % 60).padStart(2, "0") + "s" : sec + "s";
+}
+function pill(status) {
+  return (status === "running" ? '<span class="spin"></span>' : "") + PILL[status];
+}
+function card(step) {
+  const link = step.link ? `<a href="${esc(step.link)}" target="_blank" rel="noopener">Open ↗</a>` : "";
+  return `<div class="card s-${step.status}" id="card-${step.id}">
+      <div class="top"><span class="title">${esc(step.label)}</span><span class="pill">${pill(step.status)}</span></div>
+      <div class="detail">${esc(step.detail)}</div>${link}</div>`;
+}
+
+function render(data) {
+  const banner = document.getElementById("banner");
+  banner.style.display = "none";
+  const mode = document.getElementById("mode");
+  mode.textContent = "mode: " + data.mode;
+  mode.className = "chip" + (data.mode === "simulated" ? " sim" : "");
+  const run = data.run;
+  document.getElementById("run").textContent = run.run_id || "-";
+  document.getElementById("sha").textContent = run.short_sha || "-";
+  lastElapsedBase = { elapsed: run.elapsed, at: Date.now(), finished: run.finished };
+  tick();
+
+  const steps = Object.fromEntries(data.steps.map(s => [s.id, s]));
+  const failedStep = data.steps.find(s => s.status === "failed");
+  let aiStatus = "pending", aiText = "Waiting for a request";
+  if (run.phase === "coding") { aiStatus = "running"; aiText = "Writing the code"; }
+  else if (run.phase === "pushed" && failedStep) { aiStatus = "failed"; aiText = "Deployment failed - the AI must fix it"; }
+  else if (run.phase === "pushed" && data.app_url) { aiStatus = "success"; aiText = "Done - app delivered"; }
+  else if (run.phase === "pushed") { aiStatus = "running"; aiText = "Following the deployment"; }
+  const ai = document.getElementById("ai");
+  ai.className = "ai s-" + aiStatus;
+  ai.querySelector(".pill").innerHTML = pill(aiStatus);
+  ai.querySelector(".detail").textContent = aiText;
+
+  document.getElementById("group-github").innerHTML =
+    ["coding", "git_push", "github_action"].map(id => card(steps[id])).join("");
+  document.getElementById("group-nkp").innerHTML =
+    ["contract_accepted", "deployment", "app_ready"].map(id => card(steps[id])).join("");
+
+  const result = document.getElementById("result");
+  const failed = data.steps.find(s => s.status === "failed");
+  if (data.app_url) {
+    result.className = "result ok";
+    result.innerHTML = `<span>✅ The app is live</span><a href="${esc(data.app_url)}" target="_blank" rel="noopener">${esc(data.app_url)}</a>`;
+  } else if (failed) {
+    result.className = "result ko";
+    result.innerHTML = `<span>❌ Stopped at <b>${esc(failed.label)}</b></span><span class="detail">${esc(failed.detail)}</span>`;
+  } else {
+    result.className = "result";
+  }
+  document.getElementById("footer").textContent =
+    `${data.config.repo} · namespace ${data.config.namespace} · last update ${new Date(data.generated_at * 1000).toLocaleTimeString()}`;
+}
+
+function tick() {
+  const el = document.getElementById("elapsed");
+  if (!lastElapsedBase || lastElapsedBase.elapsed == null) { el.textContent = "-"; return; }
+  const extra = lastElapsedBase.finished ? 0 : (Date.now() - lastElapsedBase.at) / 1000;
+  el.textContent = fmt(lastElapsedBase.elapsed + extra);
+}
+
+async function poll() {
+  try {
+    const resp = await fetch("/api/status", { cache: "no-store" });
+    const data = await resp.json();
+    if (!resp.ok || data.error) throw new Error(data.error || ("HTTP " + resp.status));
+    render(data);
+  } catch (err) {
+    const banner = document.getElementById("banner");
+    banner.textContent = "Dashboard backend error: " + err.message + " - run scripts/diag.sh for details.";
+    banner.style.display = "block";
+  } finally {
+    setTimeout(poll, 2000);
+  }
+}
+setInterval(tick, 1000);
+poll();
+</script>
+</body>
+</html>

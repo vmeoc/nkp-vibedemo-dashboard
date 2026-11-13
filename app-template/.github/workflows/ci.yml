@@ -1,0 +1,25 @@
+# Every push on main (except the platform's own deploy/ commits) goes through
+# the platform's golden path: validate contract -> build image -> render deploy/.
+# The logic lives in the platform repo: this file only calls it.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["deploy/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: vibe-demo-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: write    # commit deploy/
+  packages: write    # push the image to GHCR
+
+jobs:
+  golden-path:
+    uses: __PLATFORM_REPO__/.github/workflows/build-deploy.yml@main
+    with:
+      namespace: __NAMESPACE__
+      platform_repo: __PLATFORM_REPO__

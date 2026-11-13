@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md", "CONTRACT.md"],
+  "permission": {
+    "edit": "allow",
+    "webfetch": "deny",
+    "bash": {
+      "*": "deny",
+      "../__PLATFORM_DIR_NAME__/scripts/status.sh *": "allow",
+      "../__PLATFORM_DIR_NAME__/scripts/validate.sh*": "allow",
+      "../__PLATFORM_DIR_NAME__/scripts/push.sh *": "ask",
+      "../__PLATFORM_DIR_NAME__/scripts/diag.sh*": "allow",
+      "ls*": "allow",
+      "cat *": "allow"
+    }
+  }
+}

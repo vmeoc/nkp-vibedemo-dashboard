@@ -1,0 +1,14 @@
+# Platform contract - what this application asks from the NKP platform.
+# Filled by the AI with the user, checked by scripts/validate.sh and by CI.
+# Flat format: one "key: value" per line. Rules: see CONTRACT.md
+app: vibe-app
+owner: platform-team
+cost_center:
+env: dev
+archi: stateless
+port: 8080
+replicas:
+size: S
+protection: none
+tracing: false
+expires:

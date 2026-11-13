@@ -1,125 +1,101 @@
 #!/usr/bin/env bash
-# =============================================================================
-# raz.sh — reset the demo to "Demo on hold"
+# RAZ - reset the demo to "Demo on hold".
 #
-#   1. Cancel running GitHub Actions on vibe-demo-app
-#      (otherwise a late run could re-commit deploy/ AFTER the reset)
-#   2. Reset the local clone to the baseline tag (local page = "Demo on hold")
-#   3. Force push the baseline tag to main ([skip ci] commit: no build)
-#   4. Ask Flux to resync (best effort)
-#   5. Reset the dashboard state file to "idle"
-#   6. (--wait) wait until the app serves the "on hold" page again
+#   1. vibe-demo-app: main is force-reset to the `baseline` tag and pushed
+#      (the baseline commit message contains [skip ci]: no build is triggered;
+#       its deploy/ points to the prebuilt :onhold image)
+#   2. Flux is asked to reconcile now (annotation, no flux CLI needed)
+#   3. the dashboard state is emptied (all steps back to "pending")
+#   4. waits until the LoadBalancer serves the on-hold page again
+#   5. removes apps created during the demo under another name (if Flux prune is off)
 #
-# Usage: ./scripts/raz.sh [--wait] [--yes]
-# Requires: git, curl, python3, kubectl
-# =============================================================================
+# The platform repo (this one) is never touched.
+#
+#   raz.sh        asks for confirmation
+#   raz.sh -y     no confirmation (use during the demo)
 set -euo pipefail
+. "$(dirname "$0")/_common.sh"
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck disable=SC1091
-source "$ROOT_DIR/.env"
+YES=0
+[ "${1:-}" = "-y" ] && YES=1
+RAZ_WAIT="${RAZ_WAIT:-180}"
 
-WAIT=false; YES=false
-for arg in "$@"; do
-  case "$arg" in
-    --wait) WAIT=true ;;
-    --yes)  YES=true ;;
-    *) echo "Unknown option: $arg"; exit 2 ;;
-  esac
-done
-
-API="https://api.github.com/repos/$GITHUB_OWNER/$APP_REPO"
-gh_api() {  # gh_api METHOD PATH
-  curl -fsS -X "$1" \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "$API$2"
-}
-step() { echo; echo "==> $*"; }
-warn() { echo "    WARNING: $*"; }
-
-if ! $YES; then
-  read -r -p "Reset the demo ($APP_REPO -> $BASELINE_TAG)? [y/N] " ans
-  [[ "$ans" =~ ^[yY]$ ]] || { echo "Cancelled."; exit 0; }
+if [ "$MODE" = "simulated" ]; then
+  "$PY" -m vibedemo.cli status idle >/dev/null
+  ok "MODE=simulated: dashboard state reset, nothing else touched."
+  exit 0
 fi
 
-# --- 1. Cancel running runs --------------------------------------------------
-step "1/6 Cancel running GitHub Actions"
-for status in queued in_progress; do
-  ids=$(gh_api GET "/actions/runs?status=$status&per_page=50" \
-        | python3 -c 'import sys,json; print(" ".join(str(r["id"]) for r in json.load(sys.stdin)["workflow_runs"]))')
-  for id in $ids; do
-    echo "    cancelling run $id ($status)"
-    gh_api POST "/actions/runs/$id/cancel" >/dev/null || warn "failed to cancel run $id"
-  done
+[ -d "$APP_REPO_DIR/.git" ] || die "$APP_REPO_DIR is not a git repo (run setup/02-bootstrap-app-repo.sh)"
+[ -n "${GITHUB_TOKEN:-}" ] || die "GITHUB_TOKEN is empty in .env"
+
+if [ "$YES" -ne 1 ]; then
+  printf 'This will force-push the baseline to %s/%s (main) and discard local changes in %s.\nContinue? [y/N] ' \
+    "${GITHUB_OWNER:-?}" "$APP_REPO" "$APP_REPO_DIR"
+  read -r answer
+  case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled."; exit 0 ;; esac
+fi
+
+AUTH_HEADER="$("$PY" -c 'import os,sys; from vibedemo.sources import git_auth_header; print(git_auth_header(os.environ["GITHUB_TOKEN"]))')"
+git_auth() { git -C "$APP_REPO_DIR" -c "http.https://github.com/.extraheader=$AUTH_HEADER" "$@"; }
+
+# 1. Git ---------------------------------------------------------------------
+log "Resetting $APP_REPO to the baseline tag"
+git_auth fetch --quiet --force origin "refs/tags/baseline:refs/tags/baseline" \
+  || warn "could not fetch the baseline tag from GitHub, using the local one"
+git -C "$APP_REPO_DIR" rev-parse --verify --quiet "refs/tags/baseline" >/dev/null \
+  || die "tag 'baseline' not found (run setup/02-bootstrap-app-repo.sh)"
+git -C "$APP_REPO_DIR" reset --quiet --hard
+git -C "$APP_REPO_DIR" clean --quiet -fd
+git -C "$APP_REPO_DIR" checkout --quiet -B main baseline
+git_auth push --quiet --force origin main
+ok "main = baseline ($(git -C "$APP_REPO_DIR" rev-parse --short HEAD)) pushed"
+
+BASELINE_APP="$(sed -n 's/^app:[[:space:]]*\([a-z0-9-]*\).*/\1/p' "$APP_REPO_DIR/contract.yaml" | head -n1)"
+[ -n "$BASELINE_APP" ] || die "cannot read 'app:' from the baseline contract.yaml"
+
+# 2. Flux --------------------------------------------------------------------
+log "Asking Flux to reconcile now"
+NOW="$(date +%s)"
+kc -n "$NAMESPACE" annotate --overwrite "gitrepository.source.toolkit.fluxcd.io/$GITOPS_SOURCE" \
+  "reconcile.fluxcd.io/requestedAt=$NOW" >/dev/null \
+  && ok "GitRepository $GITOPS_SOURCE" || warn "GitRepository $GITOPS_SOURCE not found in $NAMESPACE (check GITOPS_SOURCE)"
+kc -n "$NAMESPACE" annotate --overwrite "kustomization.kustomize.toolkit.fluxcd.io/$GITOPS_SOURCE" \
+  "reconcile.fluxcd.io/requestedAt=$NOW" >/dev/null \
+  && ok "Kustomization $GITOPS_SOURCE" || warn "Kustomization $GITOPS_SOURCE not found in $NAMESPACE"
+
+# 3. Dashboard state -----------------------------------------------------------
+"$PY" -m vibedemo.cli status idle >/dev/null
+ok "Dashboard reset (all steps pending)"
+
+# 4. Wait for the on-hold page --------------------------------------------------
+log "Waiting for '$BASELINE_APP' to serve the on-hold page (max ${RAZ_WAIT}s)"
+deadline=$(( $(date +%s) + RAZ_WAIT ))
+served=""
+ip=""
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  ip="$(kc -n "$NAMESPACE" get svc "$BASELINE_APP" \
+        -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  if [ -n "$ip" ]; then
+    served="$(curl -fsS --max-time 3 "http://$ip/version.txt" 2>/dev/null | tr -d '[:space:]' || true)"
+    [ "$served" = "onhold" ] && break
+  fi
+  sleep 3
 done
+if [ "$served" = "onhold" ]; then
+  ok "Demo on hold at http://$ip/"
+else
+  warn "on-hold page not confirmed yet (served: '${served:-nothing}'). Check: scripts/diag.sh, kubectl -n $NAMESPACE get kustomization,deploy,svc"
+fi
 
-# --- 2. Local clone -> baseline ---------------------------------------------
-step "2/6 Local clone -> tag $BASELINE_TAG"
-cd "$APP_REPO_DIR"
-AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
-REMOTE_URL="https://github.com/$GITHUB_OWNER/$APP_REPO.git"
-git -c http.extraHeader="$AUTH_HEADER" fetch --force --tags "$REMOTE_URL" \
-    "refs/tags/$BASELINE_TAG:refs/tags/$BASELINE_TAG"
-git checkout -q main 2>/dev/null || git checkout -q -b main
-git reset -q --hard "$BASELINE_TAG"
-git clean -fdq
-BASE_SHA=$(git rev-parse HEAD)
-echo "    local main = $BASE_SHA"
-git log -1 --format=%B | grep -q '\[skip ci\]' \
-  || warn "the $BASELINE_TAG commit message has no [skip ci]: a build will be triggered"
-
-# --- 3. Force push -----------------------------------------------------------
-step "3/6 Force push $BASELINE_TAG to main"
-git -c http.extraHeader="$AUTH_HEADER" push --force "$REMOTE_URL" HEAD:refs/heads/main
-
-# --- 4. Flux resync (best effort) --------------------------------------------
-step "4/6 Request Flux resync"
-NOW=$(date +%s)
-for kind in gitrepository.source.toolkit.fluxcd.io kustomization.kustomize.toolkit.fluxcd.io; do
-  if KUBECONFIG="$WORKLOAD_KUBECONFIG" kubectl annotate "$kind" "$GITOPS_SOURCE_NAME" \
-      -n "$PROJECT_NAMESPACE" "reconcile.fluxcd.io/requestedAt=$NOW" --overwrite >/dev/null 2>&1; then
-    echo "    $kind/$GITOPS_SOURCE_NAME: resync requested"
-  else
-    warn "$kind/$GITOPS_SOURCE_NAME not found on the workload cluster (Flux will resync at its interval)"
+# 5. Leftovers -------------------------------------------------------------------
+for name in $(kc -n "$NAMESPACE" get deploy -l vibedemo.nutanix.com/managed=true \
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+  if [ "$name" != "$BASELINE_APP" ]; then
+    log "Removing leftover app '$name' (created during the demo)"
+    kc -n "$NAMESPACE" delete deploy "$name" --ignore-not-found >/dev/null
+    kc -n "$NAMESPACE" delete svc "$name" --ignore-not-found >/dev/null
   fi
 done
 
-# --- 5. Dashboard state ------------------------------------------------------
-step "5/6 Dashboard -> idle"
-mkdir -p "$(dirname "$STATE_FILE")"
-python3 - "$STATE_FILE" "$BASE_SHA" <<'PY'
-import json, os, sys, datetime
-path, sha = sys.argv[1], sys.argv[2]
-state = {
-    "phase": "idle",
-    "sha": None,
-    "started_at": None,
-    "pushed_at": None,
-    "baseline_sha": sha,
-    "reset_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-}
-tmp = path + ".tmp"
-with open(tmp, "w") as f:
-    json.dump(state, f, indent=2)
-os.replace(tmp, path)
-PY
-echo "    $STATE_FILE reset"
-
-# --- 6. Optional wait --------------------------------------------------------
-step "6/6 Check the app"
-if $WAIT; then
-  v=""
-  for _ in $(seq 1 60); do
-    v=$(curl -fsS --max-time 3 "$APP_URL/version.txt" 2>/dev/null || true)
-    if [[ "$v" == "onhold" ]]; then echo "    OK: $APP_URL serves the 'Demo on hold' page"; exit 0; fi
-    sleep 3
-  done
-  warn "after 3 min, $APP_URL does not return 'onhold' (got: '${v:-nothing}')"
-  exit 1
-else
-  echo "    (run with --wait to wait for the 'on hold' page)"
-fi
-
-echo; echo "Reset complete."
+ok "RAZ done."

@@ -1,0 +1,75 @@
+# Platform golden path - reusable workflow called by the app repo (ci.yml).
+#
+#   1. validate contract.yaml          (refuses the run if the contract is invalid)
+#   2. build the image, tag = source commit SHA, write the SHA in /version.txt
+#   3. push it to GHCR
+#   4. render deploy/ from the contract (the only writer of deploy/)
+#   5. commit deploy/ with "deploy: <sha> [skip ci]"  -> Flux on NKP applies it
+#
+# deploy/ only changes AFTER the image exists: no ImagePullBackOff race.
+name: golden-path
+
+on:
+  workflow_call:
+    inputs:
+      namespace:
+        description: NKP project namespace
+        type: string
+        required: true
+      platform_repo:
+        description: owner/name of the platform repo (for the toolkit)
+        type: string
+        required: true
+      platform_ref:
+        type: string
+        default: main
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout application (pushed commit)
+        uses: actions/checkout@v4
+
+      - name: Checkout platform toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.platform_repo }}
+          ref: ${{ inputs.platform_ref }}
+          path: .platform
+
+      - name: Validate the contract
+        run: PYTHONPATH=.platform python3 -m vibedemo.cli validate contract.yaml
+
+      - name: Build and push the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "${GITHUB_SHA}" > app/version.txt
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" -t "$IMAGE" app
+          docker push "$IMAGE"
+
+      - name: Render deploy/ from the contract
+        run: |
+          PYTHONPATH=.platform python3 -m vibedemo.cli render \
+            --contract contract.yaml --image "$IMAGE" --sha "$GITHUB_SHA" \
+            --namespace "${{ inputs.namespace }}" --out deploy
+
+      - name: Commit deploy/
+        run: |
+          git config user.name "vibe-demo-platform[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy
+          if git diff --cached --quiet; then echo "deploy/ unchanged"; exit 0; fi
+          git commit -m "deploy: ${GITHUB_SHA} [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "deploy/ committed for ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "could not push deploy/" && exit 1
