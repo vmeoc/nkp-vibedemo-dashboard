@@ -10,6 +10,7 @@ import base64
 import json
 import os
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -155,6 +156,14 @@ class Kube:
     def service(self, name: str) -> dict:
         return self.get_json("service", name)
 
+    def request_reconcile(self, name: str) -> None:
+        """Ask Flux to reconcile the GitRepository and Kustomization now
+        (same annotation as `flux reconcile`)."""
+        stamp = "reconcile.fluxcd.io/requestedAt=%d" % int(time.time())
+        for kind in ("gitrepositories.source.toolkit.fluxcd.io",
+                     "kustomizations.kustomize.toolkit.fluxcd.io"):
+            self._run(["annotate", "--overwrite", "%s/%s" % (kind, name), stamp])
+
 
 # ------------------------------------------------------------------------ HTTP
 def http_get(url: str, timeout: float = 3.0) -> str:
@@ -198,6 +207,9 @@ class LiveSources:
 
     def service(self, app):
         return self.kube.service(app)
+
+    def request_reconcile(self):
+        self.kube.request_reconcile(self.cfg.gitops_source)
 
     def http_get(self, url):
         return http_get(url)

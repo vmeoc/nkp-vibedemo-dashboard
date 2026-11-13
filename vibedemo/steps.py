@@ -11,6 +11,10 @@ Principles
 
 The only in-memory cache is "this step already succeeded for this SHA", which
 spares GitHub API calls. Restarting the dashboard simply recomputes it.
+
+One write, on purpose: when the deploy/ commit for the SHA appears, the
+evaluator asks Flux to reconcile now (reconcile.fluxcd.io/requestedAt
+annotation), because the NKP-generated GitRepository polls GitHub every 3 min.
 """
 
 from __future__ import annotations
@@ -184,6 +188,12 @@ class Evaluator:
             if not deploy_sha:
                 return self._step("contract_accepted", RUNNING, "Waiting for the deploy/ commit")
             self._facts[(sha, "deploy_sha")] = deploy_sha
+            # The GitRepository may poll GitHub only every few minutes:
+            # ask Flux to fetch the new deploy/ commit right now (once per run).
+            try:
+                self.sources.request_reconcile()
+            except SourceError:
+                pass  # not critical: Flux will pick it up at its next interval
         ks = self.sources.kustomization()
         status = ks.get("status") or {}
         ready = _condition(ks, "Ready")

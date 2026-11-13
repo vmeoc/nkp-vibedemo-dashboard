@@ -59,6 +59,9 @@ class FakeSources:
     def service(self, app):
         return self.svc
 
+    def request_reconcile(self):
+        self.reconciles = getattr(self, "reconciles", 0) + 1
+
     def http_get(self, url):
         if isinstance(self.served, Exception):
             raise self.served
@@ -137,6 +140,14 @@ class LiveStepsTest(unittest.TestCase):
         r = self.ev(src).evaluate(pushed())
         self.assertEqual(statuses(r)[3], "failed")
         self.assertIn("denied", r["steps"][3]["detail"])
+
+    def test_reconcile_requested_once_per_run(self):
+        src = FakeSources()
+        src.ks["status"]["lastAppliedRevision"] = "main@sha1:old"
+        e = self.ev(src)
+        e.evaluate(pushed())
+        e.evaluate(pushed())
+        self.assertEqual(src.reconciles, 1)
 
     def test_flux_not_yet(self):
         src = FakeSources()

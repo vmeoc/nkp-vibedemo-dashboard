@@ -64,7 +64,7 @@ tests/               unit tests: python3 -m unittest discover -s tests -t .
 | Code under development | state file (AI) | the AI ran `status.sh coding` and then pushed |
 | Git push | GitHub API | the commit exists on GitHub |
 | GitHub Action | GitHub API (runs of `ci.yml` for this SHA) | run concluded `success` |
-| Contract accepted | Flux Kustomization `GITOPS_SOURCE` | the `deploy:` commit for this SHA is applied and `Ready=True`. Red if Flux/admission refused it (message shown) |
+| Contract accepted | Flux Kustomization `GITOPS_SOURCE` | the `deploy:` commit for this SHA is applied and `Ready=True`. Red if Flux/admission refused it (message shown). When the deploy commit appears, the dashboard asks Flux to reconcile immediately (NKP polls GitHub every 3 min) |
 | Deployment | Deployment labelled with the SHA | rollout complete, all replicas available |
 | App is ready | Service LoadBalancer + HTTP | `/version.txt` returns the SHA |
 
