@@ -28,7 +28,7 @@ single source of truth.
   STOP and explain why. Do not change the test to make it pass.
 - **Only touch the files listed in the ticket.** Do not rename, move, or
   delete other files. Do not "improve" code outside the ticket.
-- **Never touch** `setup/`, `scripts/`, `.env`, `.env.example`, `AGENTS.md`,
+- **Never touch** `setup/`, `scripts/`, `tools/`, `opencode.json`, `.env`, `.env.example`, `AGENTS.md`,
   `docs/`, `tickets/`.
 - **Never read or print the content of `.env`.** It contains secrets.
 - **Do not guess.** If the ticket or the spec is unclear, STOP and ask.
